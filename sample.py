@@ -2,11 +2,11 @@ import argparse
 import random
 import os
 import tensorflow as tf
-from lib.model import build_model
-from lib.paths import get_checkpoint_path
-from lib.preprocessing import create_indexes
-from lib.model_config import load_config
-from lib.hardware_setup import setup_hardware
+from modules.model import build_model
+from modules.paths import get_checkpoint_path
+from modules.preprocessing import create_indexes
+from modules.model_config import load_config
+from modules.hardware_setup import setup_hardware
 
 # CLI setup
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
