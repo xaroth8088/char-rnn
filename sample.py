@@ -16,12 +16,12 @@ parser.add_argument('--data_dir', type=str, default=os.path.join('data', 'shakes
                     help='data directory containing input.txt with training examples')
 
 # Sampling
-parser.add_argument('-sample_len', type=int, default=1000,
+parser.add_argument('--sample_len', type=int, default=1000,
                     help='number of characters to sample')
-parser.add_argument('-temperature', type=float, default=1.0,
+parser.add_argument('--temperature', type=float, default=1.0,
                     help="""Low temperatures results in more predictable text.
                             Higher temperatures results in more surprising text.""")
-parser.add_argument('--prime', default=u'',
+parser.add_argument('--prime', type=str, default=u'',
                     help='Before sampling, prime the output with this input.')
 
 args = parser.parse_args()
