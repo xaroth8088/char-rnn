@@ -4,8 +4,8 @@ import numpy as np
 import os
 import argparse
 from modules.model import build_model
-from modules.paths import get_checkpoint_path
-from modules.preprocessing import create_indexes
+from modules.paths import get_input_path, get_checkpoint_path, cleanup_files
+from modules.preprocessing import create_indexes, split_input_target
 from modules.model_config import save_config
 from modules.hardware_setup import setup_hardware
 
@@ -43,17 +43,21 @@ parser.add_argument('--batch_size', type=int, default=32,
                     help="""minibatch size. It's not recommended to go larger than 32.""")
 parser.add_argument('--num_epochs', type=int, default=10,
                     help='number of epochs. Number of full passes through the training examples.')
+parser.add_argument('--find_best_hyperparams', type=bool, default=False,
+                    help='Instead of training, attempt to find ideal settings')
 
 args = parser.parse_args()
 
 setup_hardware()
+cleanup_files(args.data_dir)
 
 #############################
 #   Prepare input text
 #############################
 
 # Read, then decode for py2 compat.
-text = open(os.path.join(args.data_dir, 'input.txt'), 'rb').read().decode(encoding='utf-8')
+with open(get_input_path(args.data_dir), 'rb') as file:
+    text = file.read().decode(encoding='utf-8')
 
 # The unique characters in the file + index tables
 vocab = sorted(set(text))
@@ -69,15 +73,8 @@ char_dataset = tf.data.Dataset.from_tensor_slices(text_as_int)
 
 sequences = char_dataset.batch(args.seq_length + 1, drop_remainder=True)
 
-
 # For each sequence, duplicate and shift it to form the input and target text by using the map method to apply a simple
 # function to each batch:
-def split_input_target(chunk):
-    input_text = chunk[:-1]
-    target_text = chunk[1:]
-    return input_text, target_text
-
-
 dataset = sequences.map(split_input_target)
 
 # Buffer size to shuffle the dataset
@@ -105,21 +102,8 @@ model = build_model(
 #   Train the model
 #############################
 
-# Our loss function
-def loss(labels, logits):
-    # TODO: make the loss function configurable?
-    return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
-
-
-# Run it
-model.compile(optimizer='adam', loss=loss)
-
 # Directory where the checkpoints will be saved
 checkpoint_dir = get_checkpoint_path(args.data_dir)
-try:
-    shutil.rmtree(checkpoint_dir)
-except FileNotFoundError:
-    pass
 os.mkdir(checkpoint_dir)
 
 # Name of the checkpoint files

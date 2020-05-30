@@ -7,3 +7,9 @@ def create_indexes(vocab):
     idx2char = np.array(vocab)
 
     return char2idx, idx2char
+
+
+def split_input_target(chunk):
+    input_text = chunk[:-1]
+    target_text = chunk[1:]
+    return input_text, target_text
