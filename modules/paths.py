@@ -23,12 +23,10 @@ def cleanup_files(base):
     except FileNotFoundError:
         pass
 
-    # Remove previous hyperparams tuning data
-    try:
-        shutil.rmtree(os.path.join(base, 'hyperparams-optimization'))
-    except FileNotFoundError:
-        pass
-
 
 def get_input_path(base):
     return os.path.join(base, 'input.txt')
+
+
+def get_checkpoint_prefix(base):
+    return os.path.join(base, "ckpt_{epoch}")

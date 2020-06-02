@@ -1,15 +1,20 @@
+import itertools
 import tensorflow as tf
-import shutil
 import numpy as np
 import os
 import argparse
-from modules.model import build_model
-from modules.paths import get_input_path, get_checkpoint_path, cleanup_files
-from modules.preprocessing import create_indexes, split_input_target
+from random import sample
+from datetime import datetime
+
+from modules.model import train
+from modules.paths import get_input_path, get_checkpoint_path, cleanup_files, get_checkpoint_prefix
+from modules.preprocessing import create_indexes
 from modules.model_config import save_config
 from modules.hardware_setup import setup_hardware
 
-# CLI setup
+#############################
+#   CLI setup
+#############################
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 # Directories
@@ -39,12 +44,15 @@ parser.add_argument('--num_layers', type=int, default=1,
 # Optimization
 parser.add_argument('--seq_length', type=int, default=50,
                     help='RNN training sequence length')
-parser.add_argument('--batch_size', type=int, default=32,
+parser.add_argument('--batch_size', type=int, default=16,
                     help="""minibatch size. It's not recommended to go larger than 32.""")
 parser.add_argument('--num_epochs', type=int, default=10,
                     help='number of epochs. Number of full passes through the training examples.')
 parser.add_argument('--find_best_hyperparams', type=bool, default=False,
                     help='Instead of training, attempt to find ideal settings')
+parser.add_argument('--num_trials', type=int, default=10,
+                    help="""How many trials to run.  Each trial will run --num_epochs epochs.
+                            This option is unused if --find_best_hyperparams is not set""")
 
 args = parser.parse_args()
 
@@ -62,7 +70,8 @@ with open(get_input_path(args.data_dir), 'rb') as file:
 # The unique characters in the file + index tables
 vocab = sorted(set(text))
 
-save_config(args.data_dir, args.rnn_units, args.num_layers, vocab)
+if args.find_best_hyperparams is False:
+    save_config(args.data_dir, args.rnn_units, args.num_layers, vocab)
 
 char2idx, idx2char = create_indexes(vocab)
 
@@ -71,46 +80,71 @@ text_as_int = np.array([char2idx[c] for c in text])
 # Create training examples / targets
 char_dataset = tf.data.Dataset.from_tensor_slices(text_as_int)
 
-sequences = char_dataset.batch(args.seq_length + 1, drop_remainder=True)
 
-# For each sequence, duplicate and shift it to form the input and target text by using the map method to apply a simple
-# function to each batch:
-dataset = sequences.map(split_input_target)
-
-# Buffer size to shuffle the dataset
-# (TF data is designed to work with possibly infinite sequences,
-# so it doesn't attempt to shuffle the entire sequence in memory. Instead,
-# it maintains a buffer in which it shuffles elements).
-BUFFER_SIZE = 10000
-
-# Shuffle the dataset
-dataset = dataset.shuffle(BUFFER_SIZE, reshuffle_each_iteration=True).batch(args.batch_size, drop_remainder=True)
-
-#############################
-#   Build the model
-#############################
-
-# Construct the model
-model = build_model(
-    vocab_size=len(vocab),
-    rnn_units=args.rnn_units,
-    batch_size=args.batch_size,
-    num_layers=args.num_layers)
+# Our loss function
+def loss(labels, logits):
+    # TODO: make the loss function configurable?
+    return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
 
 
-#############################
-#   Train the model
-#############################
+# Train it!
+if args.find_best_hyperparams is False:
+    # Directory where the checkpoints will be saved
+    checkpoint_dir = get_checkpoint_path(args.data_dir)
+    os.mkdir(checkpoint_dir)
 
-# Directory where the checkpoints will be saved
-checkpoint_dir = get_checkpoint_path(args.data_dir)
-os.mkdir(checkpoint_dir)
+    # Name of the checkpoint files
+    checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+        filepath=get_checkpoint_prefix(checkpoint_dir),
+        save_weights_only=True)
 
-# Name of the checkpoint files
-checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt_{epoch}")
+    train(
+        vocab=vocab,
+        char_dataset=char_dataset,
+        rnn_units=args.rnn_units,
+        batch_size=args.batch_size,
+        num_layers=args.num_layers,
+        seq_length=args.seq_length,
+        checkpoint_callbacks=[checkpoint_callback],
+        num_epochs=args.num_epochs,
+        loss_function=loss
+    )
+elif args.find_best_hyperparams is True:
+    # Define the search space for the parameters
+    common_params = {
+        "vocab": vocab,
+        "char_dataset": char_dataset,
+        "checkpoint_callbacks": [],
+        "num_epochs": args.num_epochs,
+        "loss_function": loss
+    }
 
-checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-    filepath=checkpoint_prefix,
-    save_weights_only=True)
+    keys = ['rnn_units', 'batch_size', 'num_layers', 'seq_length']
+    # TODO: CLI to give sets for these params to test within
+    search_space = list(itertools.product(
+        [x for x in range(32, 1024, 64)],  # rnn_units
+        [2, 4, 8, 16, 32],  # batch_size
+        [1, 2, 3],  # num_layers
+        [x for x in range(1, 240, 5)],  # seq_length
+    ))
 
-history = model.fit(dataset, epochs=args.num_epochs, callbacks=[checkpoint_callback])
+    results = []
+
+    for _ in range(args.num_trials):
+        hyperparams = dict(zip(keys, sample(search_space, 1)[0]))
+        print("BEGINNING TRIAL")
+        print(hyperparams)
+        try:
+            start = datetime.now()
+            history = train(**common_params, **hyperparams)
+            end = datetime.now()
+            trial_loss = history.history['loss'][-1:]
+            results.append({
+                "hyperparams": hyperparams,
+                "loss": trial_loss,
+                "duration": end - start
+            })
+        except Exception as e:
+            print(e)
+
+    print(results)
