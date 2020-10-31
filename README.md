@@ -18,7 +18,7 @@ To run with CUDA support, pass `--gpus=all` to the `docker run` command.
 Running from inside the container without CUDA support will be very slow.  Also, it will throw a bunch of ignorable warnings due to CUDA not being present.
 
 # Training the model
-First, put a file named `input.txt` inside a directory somewhere.  The training script will create other files will be created alongside this input.
+First, put a file named `input.txt` inside a directory somewhere.  The training script will create other files alongside this input in the same directory.
 
 Then:
 
