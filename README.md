@@ -13,7 +13,9 @@ Then, in your Python virtual environment:
 ## Docker
 Alternately, a `Dockerfile` is included that will install the appropriate requirements into the image.
 
-CUDA support is NOT included in this image, so running from inside the container will be very slow.  Also, it will throw a bunch of ignorable warnings due to CUDA not being present.
+To run with CUDA support, pass `--gpus=all` to the `docker run` command.
+
+Running from inside the container without CUDA support will be very slow.  Also, it will throw a bunch of ignorable warnings due to CUDA not being present.
 
 # Training the model
 First, put a file named `input.txt` inside a directory somewhere.  The training script will create other files will be created alongside this input.
